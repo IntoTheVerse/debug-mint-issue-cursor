@@ -5,9 +5,12 @@ Here’s a clean comparison and what it implies.
 
 ### Cyber Spin (full path)
 
-1. **Main tx** — `MainMintReincarnateNft` → CPI into **VRF** (`Vrf1RNU…`, `Idx: 8`) → `Program returned success`. That step **requests** randomness / schedules the callback path your program expects.
+1. **Main tx** — `MainMintReincarnateNft` → CPI into **VRF** (`Vrf1RNU…`, `Idx: 8`) → `Program returned success`. That step **requests** randomness / schedules the callback path your program expects. 
+[https://explorer.solana.com/tx/5UBmhGjfP8mqsTbgtwH8xngovYDUrHReir7omFUrPsaVAsYXjUKFubucP7rxCffqnuxacDdDryHUsYzDurwgNDRv?cluster=devnet](https://explorer.solana.com/tx/5UBmhGjfP8mqsTbgtwH8xngovYDUrHReir7omFUrPsaVAsYXjUKFubucP7rxCffqnuxacDdDryHUsYzDurwgNDRv?cluster=devnet)
 
 2. **Second tx** — **Not your game program as the outer instruction.** It’s the **Ephemeral VRF** path:
+
+[https://explorer.solana.com/tx/47oEF3Cr7k8NDRD5gmnHD8Zf7C9gGyTp63uAbo5p3NwZi65DCfheZ8jx9W47zebVFx2xp7wosKECjozmyQYu6ZsB?cluster=devnet](https://explorer.solana.com/tx/47oEF3Cr7k8NDRD5gmnHD8Zf7C9gGyTp63uAbo5p3NwZi65DCfheZ8jx9W47zebVFx2xp7wosKECjozmyQYu6ZsB?cluster=devnet)
    - Outer: **EphemeralVrf**-style flow (`6EqDKL…`)
    - Inner: **`CallbackMintReincarnateNft`**
    - Then **MPL Core** (`CoREEN…`) `Create` / `Approve`, etc.
@@ -17,7 +20,10 @@ So the **weapon NFT is actually created in tx 2**, driven by the **VRF callback*
 
 ### Nova Shatterer (stuck)
 
+
+
 1. **Main tx** — Same top-level: `MainMintReincarnateNft` → VRF `Idx: 8` → success. So **tx 1 did the “request” path** similarly to Cyber Spin.
+[https://explorer.solana.com/tx/4fK4gMLBpUvfmbhEUAa71PjcLuAtodrK77qJ6hPqF7Gn8mcGBTnwb6iDfgZnXPv4g8Ur6oKTZu4MeNKjweWZg5EG?cluster=devnet](https://explorer.solana.com/tx/4fK4gMLBpUvfmbhEUAa71PjcLuAtodrK77qJ6hPqF7Gn8mcGBTnwb6iDfgZnXPv4g8Ur6oKTZu4MeNKjweWZg5EG?cluster=devnet)
 
 2. **One clear difference in your logs** — On Nova, **System Program runs before VRF**; on Cyber Spin you only pasted VRF right after the instruction label. That usually just means **an extra rent/allocate/transfer** in that build of the ix (not automatically wrong), but it’s worth diffing **accounts + inner ix order** between the two txs in Explorer if something is off.
 
