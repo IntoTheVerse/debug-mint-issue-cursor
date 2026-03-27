@@ -70,5 +70,3 @@ Your Unity poller is doing the right *kind* of thing: wait for `CallbackMintRein
 | Where the NFT is actually created | **Tx 2** | **Never** |
 
 So the issue is **fulfillment of the VRF / Ephemeral callback**, not MPL Core in isolation and not “Explorer logging wrong” — **tx 2 was never submitted or never confirmed on devnet.**
-
-If you later paste **account addresses** (VRF request / poll PDA) from both mints, we can reason about reuse; the **sigil-aptos** repo still doesn’t contain this program, so the next fixes are in **your Anchor program + Ephemeral VRF integration + devnet ops**, not Aptos.
