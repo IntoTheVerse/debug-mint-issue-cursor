@@ -1,69 +1,90 @@
-## VRF mint callback issue for consecutive mints 
 
-you can check the video here: [https://youtu.be/3tM_PFEAS8c](https://youtu.be/3tM_PFEAS8c)
+# Devnet: Ephemeral VRF callback missing on consecutive weapon mints
 
-check tx history for this account here to see the order of transactions and their timestamps: [https://explorer.solana.com/address/A6hdCTRfvdxKmLzhs52RSz1rrCxJ42riB9NiL1JUNEoV?cluster=devnet](https://explorer.solana.com/address/A6hdCTRfvdxKmLzhs52RSz1rrCxJ42riB9NiL1JUNEoV?cluster=devnet)
+**Video (repro / UX):** [YouTube — mint flow & stuck forging UI](https://youtu.be/3tM_PFEAS8c)
 
-### Cyber Spin (full path)
-
-1. **Main tx** — `MainMintReincarnateNft` → CPI into **VRF** (`Vrf1RNU…`, `Idx: 8`) → `Program returned success`. That step **requests** randomness / schedules the callback path your program expects. 
-[https://explorer.solana.com/tx/5UBmhGjfP8mqsTbgtwH8xngovYDUrHReir7omFUrPsaVAsYXjUKFubucP7rxCffqnuxacDdDryHUsYzDurwgNDRv?cluster=devnet](https://explorer.solana.com/tx/5UBmhGjfP8mqsTbgtwH8xngovYDUrHReir7omFUrPsaVAsYXjUKFubucP7rxCffqnuxacDdDryHUsYzDurwgNDRv?cluster=devnet)
-
-2. **Second tx** — **Not your game program as the outer instruction.** It’s the **Ephemeral VRF** path:
-
-[https://explorer.solana.com/tx/47oEF3Cr7k8NDRD5gmnHD8Zf7C9gGyTp63uAbo5p3NwZi65DCfheZ8jx9W47zebVFx2xp7wosKECjozmyQYu6ZsB?cluster=devnet](https://explorer.solana.com/tx/47oEF3Cr7k8NDRD5gmnHD8Zf7C9gGyTp63uAbo5p3NwZi65DCfheZ8jx9W47zebVFx2xp7wosKECjozmyQYu6ZsB?cluster=devnet)
-   - Outer: **EphemeralVrf**-style flow (`6EqDKL…`)
-   - Inner: **`CallbackMintReincarnateNft`**
-   - Then **MPL Core** (`CoREEN…`) `Create` / `Approve`, etc.
-   - Log **`R:0`** (your rarity line)
-
-So the **weapon NFT is actually created in tx 2**, driven by the **VRF callback** program, not in tx 1.
-
-### Nova Shatterer (stuck)
-
-
-
-1. **Main tx** — Same top-level: `MainMintReincarnateNft` → VRF `Idx: 8` → success. So **tx 1 did the “request” path** similarly to Cyber Spin.
-[https://explorer.solana.com/tx/4fK4gMLBpUvfmbhEUAa71PjcLuAtodrK77qJ6hPqF7Gn8mcGBTnwb6iDfgZnXPv4g8Ur6oKTZu4MeNKjweWZg5EG?cluster=devnet](https://explorer.solana.com/tx/4fK4gMLBpUvfmbhEUAa71PjcLuAtodrK77qJ6hPqF7Gn8mcGBTnwb6iDfgZnXPv4g8Ur6oKTZu4MeNKjweWZg5EG?cluster=devnet)
-
-2. **One clear difference in your logs** — On Nova, **System Program runs before VRF**; on Cyber Spin you only pasted VRF right after the instruction label. That usually just means **an extra rent/allocate/transfer** in that build of the ix (not automatically wrong), but it’s worth diffing **accounts + inner ix order** between the two txs in Explorer if something is off.
-
-3. **Second tx** — **Never landed.** So nothing ever ran `CallbackMintReincarnateNft` → **no MPL Core create** for that mint. The forging screen is waiting for something that **never happened on-chain**.
-
-So: **Nova is not “mint failed in Unity” — it’s “VRF callback tx never appeared.”**
+**Wallet (tx history / ordering):** [Solana Explorer — `A6hdCTRfvdxKmLzhs52RSz1rrCxJ42riB9NiL1JUNEoV` (devnet)](https://explorer.solana.com/address/A6hdCTRfvdxKmLzhs52RSz1rrCxJ42riB9NiL1JUNEoV?cluster=devnet)
 
 ---
 
-## Root cause bucket (almost certainly)
+## Context
 
-The **Ephemeral VRF / fulfillment pipeline** (the stack that produces the **second** transaction) **did not complete** for Nova:
-
-- Devnet **keepers / fulfillment** can be **slow, flaky, or rate-limited**.
-- Sometimes the **second** request is **delayed** past your **180s** poll, or **dropped** if the service is unhealthy.
-- Less common but important: **bad or reused VRF / request state** so fulfillment never schedules (would need program + account diff).
-
-Your Unity poller is doing the right *kind* of thing: wait for `CallbackMintReincarnateNft` on the poll account. If that tx **doesn’t exist**, the UI will hang **forever** unless you timeout and show a clear error.
+- **Cluster:** Solana **devnet**
+- **Flow:** Marketplace weapon mint via CCMC `MainMintReincarnateNft` → **Ephemeral VRF** requests randomness → a **separate** transaction is expected to invoke `CallbackMintReincarnateNft` (MPL Core create, etc.).
+- **Client behavior:** Unity waits for that **callback** transaction (and/or player PDA update). If the callback **never lands**, the UI stays on “forging” until timeout.
 
 ---
 
-## What to do in practice
+## Case A — Cyber Spin 6 (success — full path)
 
-1. **Confirm on Explorer** for Nova’s **main** tx: note **time**, **slot**, **signers**. Then open the **VRF / request PDA** accounts your program documents and see if a **pending** request is still there or if devnet shows **no** follow-up signature.
+| Step | What happened |
+|------|----------------|
+| 1 | **Main tx** — `MainMintReincarnateNft` → CPI into **VRF** (`Vrf1RNU…`, log `Idx: 8`) → success. This is the **request** path. |
+| 2 | **Callback tx** — Top-level is the **Ephemeral VRF** / fulfillment path, which invokes CCMC **`CallbackMintReincarnateNft`**, then **MPL Core** (`CoREEN…`) `Create` / collection approve, and program log **`R:0`**. The **weapon NFT is created in tx 2**, not tx 1. |
 
-2. **Retry** the same mint after several minutes; if **sometimes** tx 2 appears, it’s **devnet / fulfillment reliability**.
+**Links**
 
-3. **Compare byte-for-byte** the two **MainMint** transactions (accounts list + logs). If Nova’s path accidentally **skips** registering the request the Ephemeral worker listens for, you’d still see “success” on tx 1 but **no** callback — that’s an **on-chain program** bug to fix.
-
-4. **Ephemeral VRF / operator** — check their **devnet** status, limits, and whether they require a **minimum fee** or **priority fee** for the *callback* path (sometimes only the user tx is visible in your tests).
+1. Main: [devnet tx `5UBmhGjf…`](https://explorer.solana.com/tx/5UBmhGjfP8mqsTbgtwH8xngovYDUrHReir7omFUrPsaVAsYXjUKFubucP7rxCffqnuxacDdDryHUsYzDurwgNDRv?cluster=devnet)  
+2. Callback: [devnet tx `47oEF3Cr…`](https://explorer.solana.com/tx/47oEF3Cr7k8NDRD5gmnHD8Zf7C9gGyTp63uAbo5p3NwZi65DCfheZ8jx9W47zebVFx2xp7wosKECjozmyQYu6ZsB?cluster=devnet)
 
 ---
 
-## Short summary
+## Case B — Nova Shatterer (stuck — callback never observed)
 
-| Item | Cyber Spin | Nova Shatterer |
-|------|------------|----------------|
-| Main tx (`MainMintReincarnateNft` + VRF request) | Yes | Yes |
-| Callback tx (`CallbackMintReincarnateNft` + MPL Core) | Yes | **Missing** |
-| Where the NFT is actually created | **Tx 2** | **Never** |
+| Step | What happened |
+|------|----------------|
+| 1 | **Main tx** — Same high-level pattern: `MainMintReincarnateNft` → VRF CPI, log **`Idx: 8`** → success. Request path appears to run. |
+| 2 | **Callback tx** — **Not observed** on devnet (no second tx with `CallbackMintReincarnateNft` / MPL Core create for this mint). Forging UI waits for something that **did not confirm on-chain**. |
 
-So the issue is **fulfillment of the VRF / Ephemeral callback**, not MPL Core in isolation and not “Explorer logging wrong” — **tx 2 was never submitted or never confirmed on devnet.**
+**Link**
+
+- Main only: [devnet tx `4fK4gMLB…`](https://explorer.solana.com/tx/4fK4gMLBpUvfmbhEUAa71PjcLuAtodrK77qJ6hPqF7Gn8mcGBTnwb6iDfgZnXPv4g8Ur6oKTZu4MeNKjweWZg5EG?cluster=devnet)
+
+**Note on instruction ordering**  
+On Nova’s main tx, **System Program** appears in the logs **before** the VRF CPI; on Cyber Spin your capture showed VRF immediately after the CCMC instruction label. That often reflects **rent / allocate / transfer** differences between two valid txs, not proof of a bug—but a **byte-level diff** (account metas + inner instructions) between the two main txs is still useful to rule out a **program-side** registration bug.
+
+---
+
+## Summary table
+
+| | Cyber Spin 6 | Nova Shatterer |
+|--|--------------|----------------|
+| Main (`MainMintReincarnateNft` + VRF request) | Yes | Yes |
+| Callback (`CallbackMintReincarnateNft` + MPL Core create) | Yes | **Missing** |
+| Where the NFT is created | **Transaction 2** | **Never (no tx 2)** |
+
+**Conclusion for this repro:** The failure mode is **absence of the Ephemeral VRF fulfillment / callback transaction** on devnet, not “Unity mint logic” or “Explorer wrong” in isolation.
+
+---
+
+## Likely cause buckets (for your review)
+
+1. **Fulfillment / operator path (devnet)** — Second tx never submitted, dropped, heavily delayed, or failing before CCMC runs (slow or flaky keepers, limits, unhealthy worker, etc.).
+2. **Request identity / queue** — Both mains logged **`Idx: 8`** in our captures; if that index is meaningful globally, **back-to-back** mints might warrant checking for **collision, reuse, or dropped second registration** on the VRF side (we’re not assuming—we’re flagging for your team to interpret against the Ephemeral VRF spec).
+3. **On-chain registration bug (less common)** — Main tx succeeds but **does not** correctly register what the fulfiller listens for; would show up as **no callback** even with a healthy operator. **Diff of the two main txs** helps separate (3) from (1).
+
+---
+
+## What would help from MagicBlock
+
+1. **Confirm** whether, for main tx [`4fK4gMLB…`](https://explorer.solana.com/tx/4fK4gMLBpUvfmbhEUAa71PjcLuAtodrK77qJ6hPqF7Gn8mcGBTnwb6iDfgZnXPv4g8Ur6oKTZu4MeNKjweWZg5EG?cluster=devnet), a **callback was ever scheduled** and if anything **failed** on your side (logs, queue, simulation).
+2. **Guidance** on **devnet** reliability and any **rate limits / fees** affecting the **fulfillment** transaction (not only the user-signed main tx).
+3. If applicable, whether **consecutive** requests from the same wallet/program need **spacing**, **idempotency**, or **client-side serialization** on our end—and whether **`Idx: 8` repeating** across two mains is expected.
+
+---
+
+## What we’re doing on the client (FYI)
+
+- Polling anchored on `newAssetPDA` + logs for successful `CallbackMintReincarnateNft`.
+- **`mintNew`:** optional **player-PDA** check when chain state updates before sig history.
+- **Serial guard:** block starting a **second** mint while the first is still **signing or waiting on VRF** (reduces back-to-back load; does not replace a missing callback tx).
+
+---
+
+## Practical next checks (either side)
+
+1. Explorer: **`newAssetPDA`** for Nova — confirm only one signature vs two (main + callback).
+2. Retry Nova after several minutes: if tx 2 **sometimes** appears → points to **devnet / fulfillment reliability**; if **never** → deeper look at **request registration + operator**.
+3. Side-by-side **decode** of Cyber vs Nova **main** txs (accounts + inner ix).
+
+---
