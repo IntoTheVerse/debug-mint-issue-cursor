@@ -1,7 +1,6 @@
+## VRF mint callback issue for consecutive mints 
 
-Here’s a clean comparison and what it implies.
-
-## What “success” means for each step
+you can check the video here: [https://youtu.be/3tM_PFEAS8c](https://youtu.be/3tM_PFEAS8c)
 
 check tx history for this account here to see the order of transactions and their timestamps: [https://explorer.solana.com/address/A6hdCTRfvdxKmLzhs52RSz1rrCxJ42riB9NiL1JUNEoV?cluster=devnet](https://explorer.solana.com/address/A6hdCTRfvdxKmLzhs52RSz1rrCxJ42riB9NiL1JUNEoV?cluster=devnet)
 
@@ -53,11 +52,9 @@ Your Unity poller is doing the right *kind* of thing: wait for `CallbackMintRein
 
 2. **Retry** the same mint after several minutes; if **sometimes** tx 2 appears, it’s **devnet / fulfillment reliability**.
 
-3. **Increase** `maxWaitSec` and/or add a **“Still waiting for VRF callback…”** message with **link to Explorer** for the main tx so users don’t think the client froze.
+3. **Compare byte-for-byte** the two **MainMint** transactions (accounts list + logs). If Nova’s path accidentally **skips** registering the request the Ephemeral worker listens for, you’d still see “success” on tx 1 but **no** callback — that’s an **on-chain program** bug to fix.
 
-4. **Compare byte-for-byte** the two **MainMint** transactions (accounts list + logs). If Nova’s path accidentally **skips** registering the request the Ephemeral worker listens for, you’d still see “success” on tx 1 but **no** callback — that’s an **on-chain program** bug to fix.
-
-5. **Ephemeral VRF / operator** — check their **devnet** status, limits, and whether they require a **minimum fee** or **priority fee** for the *callback* path (sometimes only the user tx is visible in your tests).
+4. **Ephemeral VRF / operator** — check their **devnet** status, limits, and whether they require a **minimum fee** or **priority fee** for the *callback* path (sometimes only the user tx is visible in your tests).
 
 ---
 
