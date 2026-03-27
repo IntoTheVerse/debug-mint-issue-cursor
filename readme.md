@@ -3,6 +3,8 @@ Here’s a clean comparison and what it implies.
 
 ## What “success” means for each step
 
+check tx history for this account here to see the order of transactions and their timestamps: [https://explorer.solana.com/address/A6hdCTRfvdxKmLzhs52RSz1rrCxJ42riB9NiL1JUNEoV?cluster=devnet](https://explorer.solana.com/address/A6hdCTRfvdxKmLzhs52RSz1rrCxJ42riB9NiL1JUNEoV?cluster=devnet)
+
 ### Cyber Spin (full path)
 
 1. **Main tx** — `MainMintReincarnateNft` → CPI into **VRF** (`Vrf1RNU…`, `Idx: 8`) → `Program returned success`. That step **requests** randomness / schedules the callback path your program expects. 
